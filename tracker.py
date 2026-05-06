@@ -36,14 +36,22 @@ def start_tracking(source, exercise, side, stop_event):
         # Live camera (e.g. source is 0)
         frame_delay = 1
 
+    p1, p2, p3 = None, None, None
+    
     if exercise == "Biceps Curls":
         if side == "Left":
             target_indices = [11, 13, 15] # Shoulder, Elbow, Wrist
         else:
             target_indices = [12, 14, 16]
-    else:
+    elif exercise in ["Heel Slides", "Straight Leg Raise"]:
         if side == "Left":
             target_indices = [23, 25, 27] # Hip, Knee, Ankle
+        else:
+            target_indices = [24, 26, 28]
+    else:
+        # Safe fallback
+        if side == "Left":
+            target_indices = [23, 25, 27]
         else:
             target_indices = [24, 26, 28]
         
@@ -56,6 +64,8 @@ def start_tracking(source, exercise, side, stop_event):
 
     current_visual_warning = None
     warning_frames_remaining = 0
+    correct = 0
+    incorrect = 0
 
     # The loop will naturally break if stop_event is set by the UI
     while cap.isOpened() and not stop_event.is_set():
@@ -99,6 +109,7 @@ def start_tracking(source, exercise, side, stop_event):
             if visible and len(pts) == 3:
                 p1, p2, p3 = pts[0], pts[1], pts[2]
                 
+            if p1 and p2 and p3:
                 # Draw skeleton lines
                 cv2.line(frame, p1, p2, (255, 0, 0), 4)
                 cv2.line(frame, p2, p3, (255, 0, 0), 4)
@@ -125,11 +136,11 @@ def start_tracking(source, exercise, side, stop_event):
                     current_visual_warning = state_machine.current_warning
                     warning_frames_remaining = 30 
                 
-                display_warning = current_visual_warning if warning_frames_remaining > 0 else None
-                VisualFeedbackController.draw_overlay(frame, exercise, correct, incorrect, display_warning)
-                
-                if warning_frames_remaining > 0:
-                    warning_frames_remaining -= 1
+            display_warning = current_visual_warning if warning_frames_remaining > 0 else None
+            VisualFeedbackController.draw_overlay(frame, exercise, correct, incorrect, display_warning)
+            
+            if warning_frames_remaining > 0:
+                warning_frames_remaining -= 1
 
         cv2.imshow('AI Physical Therapy Tracker - Press ESC to Exit', frame)
 
