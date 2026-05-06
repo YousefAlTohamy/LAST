@@ -39,7 +39,7 @@ class PhysicalTherapyApp(ctk.CTk):
         self.exercise_var = ctk.StringVar(value="Heel Slides")
         self.exercise_cb = ctk.CTkComboBox(
             self, 
-            values=["Heel Slides", "Straight Leg Raise"], 
+            values=["Heel Slides", "Straight Leg Raise", "Biceps Curls"], 
             variable=self.exercise_var,
             state="readonly",
             width=250

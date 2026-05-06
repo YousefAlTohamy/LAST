@@ -36,10 +36,16 @@ def start_tracking(source, exercise, side, stop_event):
         # Live camera (e.g. source is 0)
         frame_delay = 1
 
-    if side == "Left":
-        target_indices = [23, 25, 27] 
+    if exercise == "Biceps Curls":
+        if side == "Left":
+            target_indices = [11, 13, 15] # Shoulder, Elbow, Wrist
+        else:
+            target_indices = [12, 14, 16]
     else:
-        target_indices = [24, 26, 28]
+        if side == "Left":
+            target_indices = [23, 25, 27] # Hip, Knee, Ankle
+        else:
+            target_indices = [24, 26, 28]
         
     print(f"--- Starting tracking for {exercise} - {side} Side ---")
     
@@ -91,24 +97,24 @@ def start_tracking(source, exercise, side, stop_event):
                     visible = False
             
             if visible and len(pts) == 3:
-                hip, knee, ankle = pts[0], pts[1], pts[2]
+                p1, p2, p3 = pts[0], pts[1], pts[2]
                 
                 # Draw skeleton lines
-                cv2.line(frame, hip, knee, (255, 0, 0), 4)
-                cv2.line(frame, knee, ankle, (255, 0, 0), 4)
+                cv2.line(frame, p1, p2, (255, 0, 0), 4)
+                cv2.line(frame, p2, p3, (255, 0, 0), 4)
 
                 # Phase 3: Kinematics
-                knee_angle = KinematicsCalculator.calculate_angle(hip, knee, ankle)
-                elevation_angle = KinematicsCalculator.calculate_elevation_angle(hip, ankle)
+                joint_angle = KinematicsCalculator.calculate_angle(p1, p2, p3)
+                elevation_angle = KinematicsCalculator.calculate_elevation_angle(p1, p3)
                 
                 # Phase 4: State Machine
-                correct, incorrect = state_machine.update(knee_angle, elevation_angle, ankle[1])
+                correct, incorrect = state_machine.update(joint_angle, elevation_angle, p3[1])
                 
                 # Phase 6: Session Logging
-                session_logger.update(knee_angle, correct, incorrect)
+                session_logger.update(joint_angle, correct, incorrect)
                 
                 # Phase 5: Feedback Management
-                VisualFeedbackController.draw_angles(frame, knee, ankle, knee_angle, elevation_angle)
+                VisualFeedbackController.draw_angles(frame, p2, p3, joint_angle, elevation_angle)
                 
                 audio_cue = state_machine.get_audio_cue()
                 if audio_cue:
