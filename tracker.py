@@ -25,6 +25,17 @@ def start_tracking(source, exercise, side, stop_event):
 
     cap = cv2.VideoCapture(source)
 
+    # --- FPS Regulation ---
+    # Determine if source is live camera or video file
+    if isinstance(source, str):
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        if fps == 0 or fps is None:
+            fps = 30
+        frame_delay = int(1000 / fps)
+    else:
+        # Live camera (e.g. source is 0)
+        frame_delay = 1
+
     if side == "Left":
         target_indices = [23, 25, 27] 
     else:
@@ -117,7 +128,7 @@ def start_tracking(source, exercise, side, stop_event):
         cv2.imshow('AI Physical Therapy Tracker - Press ESC to Exit', frame)
 
         # Allow user to close specifically the OpenCV window using ESC
-        if cv2.waitKey(1) & 0xFF == 27: 
+        if cv2.waitKey(frame_delay) & 0xFF == 27: 
             break
 
     # --- Phase 6: Graceful Teardown & Export ---
