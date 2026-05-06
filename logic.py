@@ -7,32 +7,40 @@ class ExerciseStateMachine:
     """
     def __init__(self, exercise_name):
         self.exercise_name = exercise_name
-        self.state = "RESTING"
+        
+        # We explicitly use stages to ensure clean resets between reps
+        self.state = "RESTING" 
         
         self.correct_reps = 0
         self.incorrect_reps = 0
         
-        # State tracking variables
         self.min_knee_angle_during_rep = 180.0
         self.initial_ankle_y = None
         
-        # Feedback variables
         self.current_warning = None
-        self.just_completed_correct_rep = False
-        self.just_completed_incorrect_rep = False
         
-        # Positive affirmation pool
+        # High-Priority Event flags that trigger EXACTLY once per rep completion
+        self.rep_completed_correctly = False
+        self.rep_completed_with_error = False
+        
+        # Random positive affirmation pool
         self.positive_phrases = ["Good job", "Perfect", "Well done", "Great form", "Keep it up"]
+
+    def _reset_rep_tracking(self, new_state, ankle_y=None, knee_angle=180.0):
+        """Forces a clean reset of all internal phase flags to catch the next full ROM."""
+        self.state = new_state
+        self.min_knee_angle_during_rep = knee_angle
+        if ankle_y is not None:
+            self.initial_ankle_y = ankle_y
 
     def update(self, knee_angle, elevation_angle, ankle_y):
         """
         Main entry point for the state machine loop.
-        Dispatches to the specific exercise logic based on the selected exercise.
         """
-        # Reset transient flags for the current frame
+        # Reset transient triggers every frame
         self.current_warning = None
-        self.just_completed_correct_rep = False
-        self.just_completed_incorrect_rep = False
+        self.rep_completed_correctly = False
+        self.rep_completed_with_error = False
         
         if self.exercise_name == "Heel Slides":
             return self._update_heel_slides(knee_angle, ankle_y)
@@ -45,21 +53,21 @@ class ExerciseStateMachine:
         if self.initial_ankle_y is None and self.state in ["RESTING", "EXTENDED"]:
             self.initial_ankle_y = ankle_y
 
-        # Error Detection: Did the patient lift their foot?
+        # Error check: Foot lift
         if self.state != "RESTING" and self.initial_ankle_y is not None:
             if (self.initial_ankle_y - ankle_y) > 45: 
                 self.incorrect_reps += 1
-                self.just_completed_incorrect_rep = True
-                self.state = "RESTING" 
-                self.initial_ankle_y = ankle_y 
+                self.rep_completed_with_error = True
                 self.current_warning = "WARNING: Do not lift your heel"
+                
+                # CLEAN RESET for the next repetition
+                self._reset_rep_tracking("RESTING", ankle_y=ankle_y)
                 return self.correct_reps, self.incorrect_reps
 
-        # Standard State Progression
+        # Standard Phase Progression
         if self.state == "RESTING":
             if knee_angle > 160:
-                self.state = "EXTENDED"
-                self.initial_ankle_y = ankle_y 
+                self._reset_rep_tracking("EXTENDED", ankle_y=ankle_y)
                 
         elif self.state == "EXTENDED":
             if knee_angle < 150: 
@@ -79,27 +87,29 @@ class ExerciseStateMachine:
         elif self.state == "EXTENDING":
             if knee_angle > 160: 
                 self.correct_reps += 1
-                self.just_completed_correct_rep = True
-                self.state = "EXTENDED"
-                self.initial_ankle_y = ankle_y 
+                self.rep_completed_correctly = True
+                
+                # CLEAN RESET for the next repetition
+                self._reset_rep_tracking("EXTENDED", ankle_y=ankle_y)
 
         return self.correct_reps, self.incorrect_reps
 
     def _update_straight_leg_raise(self, knee_angle, elevation_angle):
-        # Immediate Error Detection during the movement
+        # Error check: Knee bent during ROM
         if self.state in ["LIFTING", "RAISED", "LOWERING"]:
             if knee_angle < 160:
                 self.incorrect_reps += 1
-                self.just_completed_incorrect_rep = True
-                self.state = "RESTING" 
+                self.rep_completed_with_error = True
                 self.current_warning = "WARNING: Keep your knee straight"
+                
+                # CLEAN RESET for the next repetition
+                self._reset_rep_tracking("RESTING", knee_angle=knee_angle)
                 return self.correct_reps, self.incorrect_reps
 
-        # Standard State Progression
+        # Standard Phase Progression
         if self.state == "RESTING":
             if elevation_angle < 15:
-                self.state = "FLAT"
-                self.min_knee_angle_during_rep = knee_angle
+                self._reset_rep_tracking("FLAT", knee_angle=knee_angle)
                 
         elif self.state == "FLAT":
             if elevation_angle > 20: 
@@ -122,27 +132,29 @@ class ExerciseStateMachine:
             if knee_angle < self.min_knee_angle_during_rep:
                 self.min_knee_angle_during_rep = knee_angle
             if elevation_angle < 15: 
-                # Validation of the completed movement
+                # Valid Completion check
                 if self.min_knee_angle_during_rep < 160:
                     self.incorrect_reps += 1
-                    self.just_completed_incorrect_rep = True
+                    self.rep_completed_with_error = True
                     self.current_warning = "WARNING: Keep your knee straight"
                 else:
                     self.correct_reps += 1
-                    self.just_completed_correct_rep = True
-                self.state = "FLAT"
+                    self.rep_completed_correctly = True
+                
+                # CLEAN RESET for the next repetition
+                self._reset_rep_tracking("FLAT", knee_angle=knee_angle)
 
         return self.correct_reps, self.incorrect_reps
 
     def get_audio_cue(self):
         """
-        Returns the specific voice cue to be spoken based on the current state.
-        Prioritizes rep completion feedback to guide the patient.
+        Discrete event trigger: only fires exactly once when a rep completes.
+        Returns the specific voice cue to be spoken.
         """
-        if self.just_completed_correct_rep:
+        if self.rep_completed_correctly:
             return random.choice(self.positive_phrases)
             
-        if self.just_completed_incorrect_rep:
+        if self.rep_completed_with_error:
             if self.exercise_name == "Heel Slides":
                 return "Error. Please keep your heel flat on the bed."
             elif self.exercise_name == "Straight Leg Raise":

@@ -3,9 +3,6 @@ import pyttsx3
 import threading
 import queue
 import time
-
-# On Windows, pythoncom is required to prevent pyttsx3 from silently hanging 
-# after the first message when used inside a background thread.
 import pythoncom
 
 class AudioManager:
@@ -23,47 +20,45 @@ class AudioManager:
 
     def _audio_worker(self):
         """
-        Background worker that continuously pulls messages from the queue and speaks them.
+        Background worker that continuously pulls messages from the queue.
         """
-        # CRITICAL FIX: Initialize COM object specifically for this background thread.
-        # Without this, engine.runAndWait() silently hangs after the first repetition on Windows.
-        pythoncom.CoInitialize()
-        
-        engine = pyttsx3.init()
-        engine.setProperty('rate', 160) 
-        
         while True:
             message = self.audio_queue.get()
             
-            # None acts as a termination signal for graceful exit
             if message is None:
                 self.audio_queue.task_done()
                 break 
                 
             try:
+                pythoncom.CoInitialize()
+                engine = pyttsx3.init()
+                engine.setProperty('rate', 160) 
                 engine.say(message)
                 engine.runAndWait()
+                pythoncom.CoUninitialize()
             except Exception as e:
                 print(f"TTS Engine Error: {e}")
             finally:
                 self.audio_queue.task_done()
-                
-        # Cleanup COM object
-        pythoncom.CoUninitialize()
 
     def play(self, message, force=False):
-        """Enqueue a message for speech. Debounce applies unless forced."""
+        """Enqueue a message for speech."""
         if not message:
             return
 
         current_time = time.time()
         
-        # Bypass cooldown check entirely if this is a high-priority/forced message
-        if not force:
-            if message in self.last_played and (current_time - self.last_played[message]) < self.cooldown:
-                return 
+        # FIX: Aggressive Deduplication Bug. 
+        # High-Priority/Discrete Events completely bypass deduplication checks.
+        # This guarantees 10 valid reps will queue 10 distinct audio responses.
+        if force:
+            self.audio_queue.put(message)
+            return
+            
+        # General spam-prevention for non-forced continuous warnings
+        if message in self.last_played and (current_time - self.last_played[message]) < self.cooldown:
+            return 
                 
-        # Register the play time and put it in the queue
         self.last_played[message] = current_time
         self.audio_queue.put(message)
 
