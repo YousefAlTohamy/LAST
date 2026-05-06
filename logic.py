@@ -1,3 +1,5 @@
+import random
+
 class ExerciseStateMachine:
     """
     Independent State Machine for tracking exercise phases and counting reps.
@@ -17,6 +19,10 @@ class ExerciseStateMachine:
         # Feedback variables
         self.current_warning = None
         self.just_completed_correct_rep = False
+        self.just_completed_incorrect_rep = False
+        
+        # Positive affirmation pool
+        self.positive_phrases = ["Good job", "Perfect", "Well done", "Great form", "Keep it up"]
 
     def update(self, knee_angle, elevation_angle, ankle_y):
         """
@@ -26,6 +32,7 @@ class ExerciseStateMachine:
         # Reset transient flags for the current frame
         self.current_warning = None
         self.just_completed_correct_rep = False
+        self.just_completed_incorrect_rep = False
         
         if self.exercise_name == "Heel Slides":
             return self._update_heel_slides(knee_angle, ankle_y)
@@ -42,6 +49,7 @@ class ExerciseStateMachine:
         if self.state != "RESTING" and self.initial_ankle_y is not None:
             if (self.initial_ankle_y - ankle_y) > 45: 
                 self.incorrect_reps += 1
+                self.just_completed_incorrect_rep = True
                 self.state = "RESTING" 
                 self.initial_ankle_y = ankle_y 
                 self.current_warning = "WARNING: Do not lift your heel"
@@ -82,6 +90,7 @@ class ExerciseStateMachine:
         if self.state in ["LIFTING", "RAISED", "LOWERING"]:
             if knee_angle < 160:
                 self.incorrect_reps += 1
+                self.just_completed_incorrect_rep = True
                 self.state = "RESTING" 
                 self.current_warning = "WARNING: Keep your knee straight"
                 return self.correct_reps, self.incorrect_reps
@@ -116,6 +125,7 @@ class ExerciseStateMachine:
                 # Validation of the completed movement
                 if self.min_knee_angle_during_rep < 160:
                     self.incorrect_reps += 1
+                    self.just_completed_incorrect_rep = True
                     self.current_warning = "WARNING: Keep your knee straight"
                 else:
                     self.correct_reps += 1
@@ -127,10 +137,15 @@ class ExerciseStateMachine:
     def get_audio_cue(self):
         """
         Returns the specific voice cue to be spoken based on the current state.
-        Removes the 'WARNING: ' prefix for natural speech.
+        Prioritizes rep completion feedback to guide the patient.
         """
-        if self.current_warning:
-            return self.current_warning.replace("WARNING: ", "")
         if self.just_completed_correct_rep:
-            return "Good job"
+            return random.choice(self.positive_phrases)
+            
+        if self.just_completed_incorrect_rep:
+            if self.exercise_name == "Heel Slides":
+                return "Error. Please keep your heel flat on the bed."
+            elif self.exercise_name == "Straight Leg Raise":
+                return "Error. Keep your knee completely straight while lifting."
+                
         return None

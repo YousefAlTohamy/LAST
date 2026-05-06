@@ -94,7 +94,8 @@ def start_tracking(source, exercise, side, stop_event):
                 
                 audio_cue = state_machine.get_audio_cue()
                 if audio_cue:
-                    audio_manager.play(audio_cue)
+                    # Force playback so critical rep completion feedback is never blocked by cooldown
+                    audio_manager.play(audio_cue, force=True)
                 
                 if state_machine.current_warning:
                     current_visual_warning = state_machine.current_warning

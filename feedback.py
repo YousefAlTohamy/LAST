@@ -4,6 +4,10 @@ import threading
 import queue
 import time
 
+# On Windows, pythoncom is required to prevent pyttsx3 from silently hanging 
+# after the first message when used inside a background thread.
+import pythoncom
+
 class AudioManager:
     """
     Manages asynchronous Text-to-Speech audio feedback.
@@ -18,6 +22,13 @@ class AudioManager:
         self.thread.start()
 
     def _audio_worker(self):
+        """
+        Background worker that continuously pulls messages from the queue and speaks them.
+        """
+        # CRITICAL FIX: Initialize COM object specifically for this background thread.
+        # Without this, engine.runAndWait() silently hangs after the first repetition on Windows.
+        pythoncom.CoInitialize()
+        
         engine = pyttsx3.init()
         engine.setProperty('rate', 160) 
         
@@ -29,20 +40,30 @@ class AudioManager:
                 self.audio_queue.task_done()
                 break 
                 
-            engine.say(message)
-            engine.runAndWait()
-            self.audio_queue.task_done()
+            try:
+                engine.say(message)
+                engine.runAndWait()
+            except Exception as e:
+                print(f"TTS Engine Error: {e}")
+            finally:
+                self.audio_queue.task_done()
+                
+        # Cleanup COM object
+        pythoncom.CoUninitialize()
 
-    def play(self, message):
-        """Enqueue a message for speech with debounce."""
+    def play(self, message, force=False):
+        """Enqueue a message for speech. Debounce applies unless forced."""
         if not message:
             return
 
         current_time = time.time()
-        if message in self.last_played:
-            if (current_time - self.last_played[message]) < self.cooldown:
+        
+        # Bypass cooldown check entirely if this is a high-priority/forced message
+        if not force:
+            if message in self.last_played and (current_time - self.last_played[message]) < self.cooldown:
                 return 
                 
+        # Register the play time and put it in the queue
         self.last_played[message] = current_time
         self.audio_queue.put(message)
 
