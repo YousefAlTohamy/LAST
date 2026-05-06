@@ -2,25 +2,12 @@ import cv2
 import threading
 import queue
 import time
-import multiprocessing
-
-def _speak_text_process(text):
-    """
-    Top-level function to run pyttsx3 in complete OS isolation.
-    This entirely eradicates the Windows COM threading deadlocks by confining 
-    the engine to a temporary process that is cleanly destroyed after execution.
-    """
-    import pyttsx3
-    engine = pyttsx3.init()
-    engine.setProperty('rate', 160)
-    engine.say(text)
-    engine.runAndWait()
-
+import subprocess
 
 class AudioManager:
     """
     Manages asynchronous Text-to-Speech audio feedback.
-    Uses Process Isolation to guarantee 100% audio reliability.
+    Uses native Windows PowerShell to provide instant, deadlock-free speech.
     """
     def __init__(self):
         self.audio_queue = queue.Queue()
@@ -33,7 +20,7 @@ class AudioManager:
     def _audio_worker(self):
         """
         Background worker that continuously pulls messages from the queue.
-        Spawns an independent process for each message to avoid deadlocks.
+        Executes a hidden PowerShell command for instant TTS.
         """
         while True:
             message = self.audio_queue.get()
@@ -42,17 +29,17 @@ class AudioManager:
                 self.audio_queue.task_done()
                 break 
                 
-            print(f"--> [AUDIO THREAD] Spawning process for: {message}")
+            print(f"--> [AUDIO THREAD] Speaking instantly: {message}")
             try:
-                # Spawn a completely independent OS process to run the speech
-                p = multiprocessing.Process(target=_speak_text_process, args=(message,))
-                p.start()
+                # Fast native Windows TTS command
+                ps_command = f'powershell -Command "Add-Type -AssemblyName System.Speech; $synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; $synth.Speak(\'{message}\');"'
                 
-                # Wait for it to finish speaking before processing the next message in the queue
-                p.join() 
-                print(f"--> [AUDIO THREAD] Successfully finished process for: {message}")
+                # Run it synchronously inside this background thread (blocks only this thread, not the camera)
+                subprocess.run(ps_command, shell=True, creationflags=subprocess.CREATE_NO_WINDOW)
+                
+                print(f"--> [AUDIO THREAD] Finished: {message}")
             except Exception as e:
-                print(f"--> [AUDIO THREAD] Process Isolation Error: {e}")
+                print(f"--> [AUDIO THREAD] PowerShell TTS Error: {e}")
             finally:
                 self.audio_queue.task_done()
 
@@ -80,7 +67,6 @@ class AudioManager:
         self.audio_queue.put(None)
         if self.thread.is_alive():
             self.thread.join(timeout=2.0)
-
 
 class VisualFeedbackController:
     """
