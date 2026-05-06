@@ -1,13 +1,26 @@
 import cv2
-import pyttsx3
 import threading
 import queue
 import time
-import pythoncom
+import multiprocessing
+
+def _speak_text_process(text):
+    """
+    Top-level function to run pyttsx3 in complete OS isolation.
+    This entirely eradicates the Windows COM threading deadlocks by confining 
+    the engine to a temporary process that is cleanly destroyed after execution.
+    """
+    import pyttsx3
+    engine = pyttsx3.init()
+    engine.setProperty('rate', 160)
+    engine.say(text)
+    engine.runAndWait()
+
 
 class AudioManager:
     """
     Manages asynchronous Text-to-Speech audio feedback.
+    Uses Process Isolation to guarantee 100% audio reliability.
     """
     def __init__(self):
         self.audio_queue = queue.Queue()
@@ -20,16 +33,8 @@ class AudioManager:
     def _audio_worker(self):
         """
         Background worker that continuously pulls messages from the queue.
+        Spawns an independent process for each message to avoid deadlocks.
         """
-        # REQUIRED ON WINDOWS: Initialize COM object for this specific background thread
-        pythoncom.CoInitialize()
-        
-        # FIX: Move Engine Init HERE. 
-        # Instantiating pyttsx3 strictly inside the separate thread guarantees 
-        # it never deadlocks between sequential executions.
-        engine = pyttsx3.init()
-        engine.setProperty('rate', 160) 
-        
         while True:
             message = self.audio_queue.get()
             
@@ -37,18 +42,19 @@ class AudioManager:
                 self.audio_queue.task_done()
                 break 
                 
-            print(f"--> [AUDIO THREAD] Picked up: {message}")
+            print(f"--> [AUDIO THREAD] Spawning process for: {message}")
             try:
-                engine.say(message)
-                engine.runAndWait()
-                print(f"--> [AUDIO THREAD] Successfully finished: {message}")
+                # Spawn a completely independent OS process to run the speech
+                p = multiprocessing.Process(target=_speak_text_process, args=(message,))
+                p.start()
+                
+                # Wait for it to finish speaking before processing the next message in the queue
+                p.join() 
+                print(f"--> [AUDIO THREAD] Successfully finished process for: {message}")
             except Exception as e:
-                print(f"--> [AUDIO THREAD] TTS Engine Error: {e}")
+                print(f"--> [AUDIO THREAD] Process Isolation Error: {e}")
             finally:
                 self.audio_queue.task_done()
-                
-        # Cleanup COM object
-        pythoncom.CoUninitialize()
 
     def play(self, message, force=False):
         """Enqueue a message for speech."""
@@ -57,7 +63,7 @@ class AudioManager:
 
         current_time = time.time()
         
-        # High Priority / Discrete Events (Rep completions) completely bypass deduplication
+        # High Priority / Discrete Events bypass deduplication completely
         if force:
             self.audio_queue.put(message)
             return
@@ -74,6 +80,7 @@ class AudioManager:
         self.audio_queue.put(None)
         if self.thread.is_alive():
             self.thread.join(timeout=2.0)
+
 
 class VisualFeedbackController:
     """
