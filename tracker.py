@@ -1,5 +1,6 @@
 import cv2
 import mediapipe as mp
+import numpy as np
 from kinematics import KinematicsCalculator
 from logic import ExerciseStateMachine
 from feedback import AudioManager, VisualFeedbackController
@@ -15,6 +16,12 @@ def start_tracking(source, exercise, side, stop_event):
         min_detection_confidence=0.5, 
         min_tracking_confidence=0.5
     )
+
+    # --- Model Warm-up (Eliminate Cold-Start Latency) ---
+    print("Warming up MediaPipe Pose model...")
+    dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8)
+    pose.process(dummy_frame)
+    print("Model warm-up complete.")
 
     cap = cv2.VideoCapture(source)
 
@@ -41,8 +48,8 @@ def start_tracking(source, exercise, side, stop_event):
             break
 
         # --- Resize high-resolution frames (bounding box) to fit the screen ---
-        max_width = 800
-        max_height = 600
+        max_width = 1000
+        max_height = 800
         h, w, _ = frame.shape
         scale_w = max_width / w
         scale_h = max_height / h
