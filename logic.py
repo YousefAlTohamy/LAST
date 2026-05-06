@@ -3,7 +3,6 @@ import random
 class ExerciseStateMachine:
     """
     Independent State Machine for tracking exercise phases and counting reps.
-    Applies strict physical therapy rules to evaluate correct and incorrect repetitions.
     """
     def __init__(self, exercise_name):
         self.exercise_name = exercise_name
@@ -151,13 +150,17 @@ class ExerciseStateMachine:
         Discrete event trigger: only fires exactly once when a rep completes.
         Returns the specific voice cue to be spoken.
         """
+        cue = None
         if self.rep_completed_correctly:
-            return random.choice(self.positive_phrases)
+            cue = random.choice(self.positive_phrases)
             
-        if self.rep_completed_with_error:
+        elif self.rep_completed_with_error:
             if self.exercise_name == "Heel Slides":
-                return "Error. Please keep your heel flat on the bed."
+                cue = "Error. Please keep your heel flat on the bed."
             elif self.exercise_name == "Straight Leg Raise":
-                return "Error. Keep your knee completely straight while lifting."
+                cue = "Error. Keep your knee completely straight while lifting."
                 
-        return None
+        if cue:
+            print(f"--> [LOGIC STATE] Triggering audio: {cue}")
+            
+        return cue

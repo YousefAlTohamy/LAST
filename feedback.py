@@ -8,7 +8,6 @@ import pythoncom
 class AudioManager:
     """
     Manages asynchronous Text-to-Speech audio feedback.
-    Ensures the OpenCV main thread never blocks while the system is speaking.
     """
     def __init__(self):
         self.audio_queue = queue.Queue()
@@ -22,6 +21,15 @@ class AudioManager:
         """
         Background worker that continuously pulls messages from the queue.
         """
+        # REQUIRED ON WINDOWS: Initialize COM object for this specific background thread
+        pythoncom.CoInitialize()
+        
+        # FIX: Move Engine Init HERE. 
+        # Instantiating pyttsx3 strictly inside the separate thread guarantees 
+        # it never deadlocks between sequential executions.
+        engine = pyttsx3.init()
+        engine.setProperty('rate', 160) 
+        
         while True:
             message = self.audio_queue.get()
             
@@ -29,17 +37,18 @@ class AudioManager:
                 self.audio_queue.task_done()
                 break 
                 
+            print(f"--> [AUDIO THREAD] Picked up: {message}")
             try:
-                pythoncom.CoInitialize()
-                engine = pyttsx3.init()
-                engine.setProperty('rate', 160) 
                 engine.say(message)
                 engine.runAndWait()
-                pythoncom.CoUninitialize()
+                print(f"--> [AUDIO THREAD] Successfully finished: {message}")
             except Exception as e:
-                print(f"TTS Engine Error: {e}")
+                print(f"--> [AUDIO THREAD] TTS Engine Error: {e}")
             finally:
                 self.audio_queue.task_done()
+                
+        # Cleanup COM object
+        pythoncom.CoUninitialize()
 
     def play(self, message, force=False):
         """Enqueue a message for speech."""
@@ -48,9 +57,7 @@ class AudioManager:
 
         current_time = time.time()
         
-        # FIX: Aggressive Deduplication Bug. 
-        # High-Priority/Discrete Events completely bypass deduplication checks.
-        # This guarantees 10 valid reps will queue 10 distinct audio responses.
+        # High Priority / Discrete Events (Rep completions) completely bypass deduplication
         if force:
             self.audio_queue.put(message)
             return
@@ -67,7 +74,6 @@ class AudioManager:
         self.audio_queue.put(None)
         if self.thread.is_alive():
             self.thread.join(timeout=2.0)
-
 
 class VisualFeedbackController:
     """
