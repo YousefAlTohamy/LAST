@@ -13,8 +13,8 @@ def start_tracking(source, exercise, side, stop_event):
     """
     mp_pose = mp.solutions.pose
     pose = mp_pose.Pose(
-        min_detection_confidence=0.5, 
-        min_tracking_confidence=0.5
+        min_detection_confidence=0.7, 
+        min_tracking_confidence=0.7
     )
 
     # --- Model Warm-up (Eliminate Cold-Start Latency) ---
@@ -66,6 +66,11 @@ def start_tracking(source, exercise, side, stop_event):
     warning_frames_remaining = 0
     correct = 0
     incorrect = 0
+    
+    # EMA Smoothing Variables
+    smoothed_joint_angle = None
+    smoothed_elevation_angle = None
+    ema_alpha = 0.3
 
     # The loop will naturally break if stop_event is set by the UI
     while cap.isOpened() and not stop_event.is_set():
@@ -115,17 +120,25 @@ def start_tracking(source, exercise, side, stop_event):
                 cv2.line(frame, p2, p3, (255, 0, 0), 4)
 
                 # Phase 3: Kinematics
-                joint_angle = KinematicsCalculator.calculate_angle(p1, p2, p3)
-                elevation_angle = KinematicsCalculator.calculate_elevation_angle(p1, p3)
+                raw_joint_angle = KinematicsCalculator.calculate_angle(p1, p2, p3)
+                raw_elevation_angle = KinematicsCalculator.calculate_elevation_angle(p1, p3)
                 
-                # Phase 4: State Machine
-                correct, incorrect = state_machine.update(joint_angle, elevation_angle, p3[1])
+                # Apply EMA Smoothing Filter
+                if smoothed_joint_angle is None:
+                    smoothed_joint_angle = raw_joint_angle
+                    smoothed_elevation_angle = raw_elevation_angle
+                else:
+                    smoothed_joint_angle = (ema_alpha * raw_joint_angle) + ((1 - ema_alpha) * smoothed_joint_angle)
+                    smoothed_elevation_angle = (ema_alpha * raw_elevation_angle) + ((1 - ema_alpha) * smoothed_elevation_angle)
+                
+                # Phase 4: State Machine (Using smoothed data)
+                correct, incorrect = state_machine.update(smoothed_joint_angle, smoothed_elevation_angle, p3[1])
                 
                 # Phase 6: Session Logging
-                session_logger.update(joint_angle, correct, incorrect)
+                session_logger.update(smoothed_joint_angle, correct, incorrect)
                 
                 # Phase 5: Feedback Management
-                VisualFeedbackController.draw_angles(frame, p2, p3, joint_angle, elevation_angle)
+                VisualFeedbackController.draw_angles(frame, p2, p3, smoothed_joint_angle, smoothed_elevation_angle)
                 
                 audio_cue = state_machine.get_audio_cue()
                 if audio_cue:
