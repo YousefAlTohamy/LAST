@@ -22,6 +22,17 @@ class ExerciseStateMachine:
         self.rep_completed_correctly = False
         self.rep_completed_with_error = False
         
+        # --- Configurable Biomechanical Angle Thresholds ---
+        # Heel Slides
+        self.HEEL_SLIDE_EXTENDED_KNEE = 160 
+        self.HEEL_SLIDE_TARGET_FLEXION = 110 
+        self.HEEL_SLIDE_FOOT_LIFT_TOLERANCE = 45 # Pixels
+        
+        # Straight Leg Raise
+        self.SLR_FLAT_ELEVATION = 15
+        self.SLR_TARGET_ELEVATION = 45 
+        self.SLR_STRAIGHT_KNEE_MIN = 160 
+        
         # Random positive affirmation pool
         self.positive_phrases = ["Good job", "Perfect", "Well done", "Great form", "Keep it up"]
 
@@ -54,7 +65,7 @@ class ExerciseStateMachine:
 
         # Error check: Foot lift
         if self.state != "RESTING" and self.initial_ankle_y is not None:
-            if (self.initial_ankle_y - ankle_y) > 45: 
+            if (self.initial_ankle_y - ankle_y) > self.HEEL_SLIDE_FOOT_LIFT_TOLERANCE: 
                 self.incorrect_reps += 1
                 self.rep_completed_with_error = True
                 self.current_warning = "WARNING: Do not lift your heel"
@@ -65,26 +76,26 @@ class ExerciseStateMachine:
 
         # Standard Phase Progression
         if self.state == "RESTING":
-            if knee_angle > 160:
+            if knee_angle > self.HEEL_SLIDE_EXTENDED_KNEE:
                 self._reset_rep_tracking("EXTENDED", ankle_y=ankle_y)
                 
         elif self.state == "EXTENDED":
-            if knee_angle < 150: 
+            if knee_angle < (self.HEEL_SLIDE_EXTENDED_KNEE - 10): 
                 self.state = "FLEXING"
                 self.min_knee_angle_during_rep = knee_angle
                 
         elif self.state == "FLEXING":
             if knee_angle < self.min_knee_angle_during_rep:
                 self.min_knee_angle_during_rep = knee_angle
-            if knee_angle < 110: 
+            if knee_angle < self.HEEL_SLIDE_TARGET_FLEXION: 
                 self.state = "FLEXED"
                 
         elif self.state == "FLEXED":
-            if knee_angle > 120: 
+            if knee_angle > (self.HEEL_SLIDE_TARGET_FLEXION + 10): 
                 self.state = "EXTENDING"
                 
         elif self.state == "EXTENDING":
-            if knee_angle > 160: 
+            if knee_angle > self.HEEL_SLIDE_EXTENDED_KNEE: 
                 self.correct_reps += 1
                 self.rep_completed_correctly = True
                 
@@ -96,7 +107,7 @@ class ExerciseStateMachine:
     def _update_straight_leg_raise(self, knee_angle, elevation_angle):
         # Error check: Knee bent during ROM
         if self.state in ["LIFTING", "RAISED", "LOWERING"]:
-            if knee_angle < 160:
+            if knee_angle < self.SLR_STRAIGHT_KNEE_MIN:
                 self.incorrect_reps += 1
                 self.rep_completed_with_error = True
                 self.current_warning = "WARNING: Keep your knee straight"
@@ -107,32 +118,32 @@ class ExerciseStateMachine:
 
         # Standard Phase Progression
         if self.state == "RESTING":
-            if elevation_angle < 15:
+            if elevation_angle < self.SLR_FLAT_ELEVATION:
                 self._reset_rep_tracking("FLAT", knee_angle=knee_angle)
                 
         elif self.state == "FLAT":
-            if elevation_angle > 20: 
+            if elevation_angle > (self.SLR_FLAT_ELEVATION + 5): 
                 self.state = "LIFTING"
                 self.min_knee_angle_during_rep = knee_angle
                 
         elif self.state == "LIFTING":
             if knee_angle < self.min_knee_angle_during_rep:
                 self.min_knee_angle_during_rep = knee_angle
-            if elevation_angle > 45: 
+            if elevation_angle > self.SLR_TARGET_ELEVATION: 
                 self.state = "RAISED"
                 
         elif self.state == "RAISED":
             if knee_angle < self.min_knee_angle_during_rep:
                 self.min_knee_angle_during_rep = knee_angle
-            if elevation_angle < 35: 
+            if elevation_angle < (self.SLR_TARGET_ELEVATION - 10): 
                 self.state = "LOWERING"
                 
         elif self.state == "LOWERING":
             if knee_angle < self.min_knee_angle_during_rep:
                 self.min_knee_angle_during_rep = knee_angle
-            if elevation_angle < 15: 
+            if elevation_angle < self.SLR_FLAT_ELEVATION: 
                 # Valid Completion check
-                if self.min_knee_angle_during_rep < 160:
+                if self.min_knee_angle_during_rep < self.SLR_STRAIGHT_KNEE_MIN:
                     self.incorrect_reps += 1
                     self.rep_completed_with_error = True
                     self.current_warning = "WARNING: Keep your knee straight"
